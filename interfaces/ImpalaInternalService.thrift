@@ -42,15 +42,12 @@ const i32 NUM_NODES_ALL_RACKS = -1
 // constants for TPlanNodeId
 const i32 INVALID_PLAN_NODE_ID = -1
 
-// Constant default partition ID, must be < 0 to avoid collisions
-const i64 DEFAULT_PARTITION_ID = -1;
-
 enum TParquetFallbackSchemaResolution {
   POSITION,
   NAME
 }
 
-// The order of the enum values needs to be kepy in sync with
+// The order of the enum values needs to be kept in sync with
 // ParquetMetadataUtils::ORDERED_ARRAY_ENCODINGS in parquet-metadata-utils.cc.
 enum TParquetArrayResolution {
   THREE_LEVEL,
@@ -61,6 +58,13 @@ enum TParquetArrayResolution {
 enum TJoinDistributionMode {
   BROADCAST,
   SHUFFLE
+}
+
+// Consistency level options for Kudu scans.
+enum TKuduReadMode {
+  DEFAULT,
+  READ_LATEST,
+  READ_AT_SNAPSHOT
 }
 
 // Query options that correspond to ImpalaService.ImpalaQueryOptions, with their
@@ -97,16 +101,8 @@ struct TQueryOptions {
   5: optional i32 num_nodes = NUM_NODES_ALL
   6: optional i64 max_scan_range_length = 0
   7: optional i32 num_scanner_threads = 0
-
-  // TODO: IMPALA-4306: retire at compatibility-breaking version
-  8: optional i32 max_io_buffers = 0              // Deprecated in 1.1
-  9: optional bool allow_unsupported_formats = 0
-  // TODO: IMPALA-4306: retire at compatibility-breaking version
-  10: optional i64 default_order_by_limit = -1    // Deprecated in 1.4
   11: optional string debug_action = ""
   12: optional i64 mem_limit = 0
-  // TODO: IMPALA-4306: retire at compatibility-breaking version
-  13: optional bool abort_on_default_limit_exceeded = 0 // Deprecated in 1.4
   14: optional CatalogObjects.THdfsCompression compression_codec
   15: optional i32 hbase_caching = 0
   16: optional bool hbase_cache_blocks = 0
@@ -118,29 +114,11 @@ struct TQueryOptions {
   // the pool is determined based on the user.
   20: optional string request_pool
 
-  // Per-host virtual CPU cores required for query (only relevant with RM).
-  // TODO: IMPALA-3271: retire at compatibility-breaking version
-  21: optional i16 v_cpu_cores
-
-  // Max time in milliseconds the resource broker should wait for
-  // a resource request to be granted by Llama/Yarn (only relevant with RM).
-  // TODO: IMPALA-3271: retire at compatibility-breaking version
-  22: optional i64 reservation_request_timeout
-
-  // Disables taking advantage of HDFS caching. This has two parts:
-  // 1. disable preferring to schedule to cached replicas
-  // 2. disable the cached read path.
-  23: optional bool disable_cached_reads = 0
-
   // test hook to disable topn on the outermost select block.
   24: optional bool disable_outermost_topn = 0
 
-  // Override for initial memory reservation size if RM is enabled.
-  // TODO: IMPALA-3271: retire at compatibility-breaking version
-  25: optional i64 rm_initial_mem = 0
-
   // Time, in s, before a query will be timed out if it is inactive. May not exceed
-  // --idle_query_timeout if that flag > 0.
+  // --idle_query_timeout if that flag > 0. If 0, falls back to --idle_query_timeout.
   26: optional i32 query_timeout_s = 0
 
   // test hook to cap max memory for spilling operators (to force them to spill).
@@ -153,11 +131,6 @@ struct TQueryOptions {
   // disastrous query plans. Impala will excercise this option if a query
   // has no plan hints, and at least one table is missing relevant stats.
   29: optional bool disable_unsafe_spills = 0
-
-  // Mode for compression; RECORD, or BLOCK
-  // This field only applies for certain file types and is ignored
-  // by all other file types.
-  30: optional CatalogObjects.THdfsSeqCompressionMode seq_compression_mode
 
   // If the number of rows that are processed for a single query is below the
   // threshold, it will be executed on the coordinator only with codegen disabled
@@ -177,10 +150,6 @@ struct TQueryOptions {
   // the same replica for every query or by starting with a new, pseudo-random replica for
   // subsequent queries. The default is to start with the same replica for every query.
   34: optional bool schedule_random_replica = 0
-
-  // For scan nodes with any conjuncts, use codegen to evaluate the conjuncts if
-  // the number of rows * number of operators in the conjuncts exceeds this threshold.
-  35: optional i64 scan_node_codegen_threshold = 1800000
 
   // If true, the planner will not generate plans with streaming preaggregations.
   36: optional bool disable_streaming_preaggregations = 0
@@ -247,14 +216,14 @@ struct TQueryOptions {
   51: optional bool enable_expr_rewrites = true
 
   // Indicates whether to use the new decimal semantics.
-  52: optional bool decimal_v2 = false
+  52: optional bool decimal_v2 = true
 
   // Indicates whether to use dictionary filtering for Parquet files
   53: optional bool parquet_dictionary_filtering = true
 
   // Policy for resolving nested array fields in Parquet files.
   54: optional TParquetArrayResolution parquet_array_resolution =
-    TParquetArrayResolution.TWO_LEVEL_THEN_THREE_LEVEL
+    TParquetArrayResolution.THREE_LEVEL
 
   // Indicates whether to read statistics from Parquet files and use them during query
   // processing. This includes skipping data based on the statistics and computing query
@@ -287,6 +256,54 @@ struct TQueryOptions {
   // sophisticated strategies - e.g. reserving a small number of buffers large enough to
   // fit maximum-sized rows.
   60: optional i64 max_row_size = 524288;
+
+  // The time, in seconds, that a session may be idle for before it is closed (and all
+  // running queries cancelled) by Impala. If 0, idle sessions never expire.
+  // The default session timeout is set by the command line flag of the same name.
+  61: optional i32 idle_session_timeout;
+
+  // Minimum number of bytes that will be scanned in COMPUTE STATS TABLESAMPLE,
+  // regardless of the user-supplied sampling percent. Default value: 1GB
+  62: optional i64 compute_stats_min_sample_size = 1073741824;
+
+  // Time limit, in s, before a query will be timed out after it starts executing. Does
+  // not include time spent in planning, scheduling or admission control. A value of 0
+  // means no time limit.
+  63: optional i32 exec_time_limit_s = 0;
+
+  // When a query has both grouping and distinct exprs, impala can optionally include the
+  // distinct exprs in the hash exchange of the first aggregation phase to spread the data
+  // among more nodes. However, this plan requires another hash exchange on the grouping
+  // exprs in the second phase which is not required when omitting the distinct exprs in
+  // the first phase. Shuffling by both is better if the grouping exprs have low NDVs.
+  64: optional bool shuffle_distinct_exprs = true;
+
+  // See comment in ImpalaService.thrift.
+  65: optional i64 max_mem_estimate_for_admission = 0;
+
+  // See comment in ImpalaService.thrift.
+  // The default values is set fairly high based on empirical data - queries with up to
+  // this number of reserved threads have run successfully as part of production
+  // workloads but with very degraded performance.
+  66: optional i32 thread_reservation_limit = 3000;
+
+  // See comment in ImpalaService.thrift.
+  67: optional i32 thread_reservation_aggregate_limit = 0;
+
+  // See comment in ImpalaService.thrift.
+  68: optional TKuduReadMode kudu_read_mode = TKuduReadMode.DEFAULT;
+
+  // Allow reading of erasure coded files in HDFS.
+  69: optional bool allow_erasure_coded_files = false;
+
+  // See comment in ImpalaService.thrift.
+  70: optional string timezone = ""
+
+  // See comment in ImpalaService.thrift.
+  71: optional i64 scan_bytes_limit = 0;
+
+  // See comment in ImpalaService.thrift.
+  72: optional i64 cpu_limit_s = 0;
 }
 
 // Impala currently has two types of sessions: Beeswax and HiveServer2
@@ -404,13 +421,22 @@ struct TQueryCtx {
   // List of tables with scan ranges that map to blocks with missing disk IDs.
   15: optional list<CatalogObjects.TTableName> tables_missing_diskids
 
-  // The pool to which this request has been submitted. Used to update pool statistics
-  // for admission control.
+  // The resolved admission control pool to which this request will be submitted. May be
+  // unset for statements that aren't subjected to admission control (e.g. USE, SET).
   16: optional string request_pool
 
   // String containing a timestamp (in UTC) set as the query submission time. It
   // represents the same point in time as now_string
   17: required string utc_timestamp_string
+
+  // String containing name of the local timezone.
+  // It is guaranteed to be a valid timezone on the coordinator (but not necessarily on
+  // the executor, since in theory the executor could have a different timezone db).
+  // TODO(Csaba): adding timezone as a query option made this property redundant. It
+  //   still has an effect if TimezoneDatabase::LocalZoneName() cannot find the
+  //   system's local timezone and falls back to UTC. This logic will be removed in
+  //   IMPALA-7359, which will make this member completely obsolete.
+  18: required string local_time_zone
 }
 
 // Specification of one output destination of a plan fragment
@@ -418,11 +444,11 @@ struct TPlanFragmentDestination {
   // the globally unique fragment instance id
   1: required Types.TUniqueId fragment_instance_id
 
-  // IP address + port of the thrift based ImpalaInteralService on the destination
-  2: required Types.TNetworkAddress server
+  // hostname + port of the Thrift based ImpalaInteralService on the destination
+  2: required Types.TNetworkAddress thrift_backend
 
   // IP address + port of the KRPC based ImpalaInternalService on the destination
-  3: optional Types.TNetworkAddress krpc_server
+  3: optional Types.TNetworkAddress krpc_backend
 }
 
 // Context to collect information, which is shared among all instances of that plan
@@ -507,19 +533,19 @@ struct TExecQueryFInstancesParams {
   // required in V1
   5: optional list<TPlanFragmentInstanceCtx> fragment_instance_ctxs
 
-  // The minimum query-wide buffer reservation size (in bytes) required for the backend
+  // The minimum query-wide memory reservation (in bytes) required for the backend
   // executing the instances in fragment_instance_ctxs. This is the peak minimum
   // reservation that may be required by the concurrently-executing operators at any
   // point in query execution. It may be less than the initial reservation total claims
   // (below) if execution of some operators never overlaps, which allows reuse of
   // reservations. required in V1
-  6: optional i64 min_reservation_bytes
+  6: optional i64 min_mem_reservation_bytes
 
   // Total of the initial buffer reservations that we expect to be claimed on this
   // backend for all fragment instances in fragment_instance_ctxs. I.e. the sum over all
   // operators in all fragment instances that execute on this backend. This is used for
   // an optimization in InitialReservation. Measured in bytes. required in V1
-  7: optional i64 initial_reservation_total_claims
+  7: optional i64 initial_mem_reservation_total_claims
 }
 
 struct TExecQueryFInstancesResult {
@@ -601,6 +627,23 @@ struct TErrorLogEntry {
   2: list<string> messages
 }
 
+// Represents the states that a fragment instance goes through during its execution. The
+// current state gets sent back to the coordinator and will be presented to users through
+// the debug webpages.
+// The states are listed in order and one state will only strictly be reached after all
+// the previous states.
+enum TFInstanceExecState {
+  WAITING_FOR_EXEC,
+  WAITING_FOR_PREPARE,
+  WAITING_FOR_CODEGEN,
+  WAITING_FOR_OPEN,
+  WAITING_FOR_FIRST_BATCH,
+  FIRST_BATCH_PRODUCED,
+  PRODUCING_DATA,
+  LAST_BATCH_SENT,
+  FINISHED
+}
+
 struct TFragmentInstanceExecStatus {
   // required in V1
   1: optional Types.TUniqueId fragment_instance_id
@@ -616,6 +659,10 @@ struct TFragmentInstanceExecStatus {
   // cumulative profile
   // required in V1
   4: optional RuntimeProfile.TRuntimeProfileTree profile
+
+  // The current state of this fragment instance's execution.
+  // required in V1
+  5: optional TFInstanceExecState current_state
 }
 
 struct TReportExecStatusParams {
@@ -668,34 +715,6 @@ struct TCancelQueryFInstancesParams {
 }
 
 struct TCancelQueryFInstancesResult {
-  // required in V1
-  1: optional Status.TStatus status
-}
-
-
-// TransmitData
-
-struct TTransmitDataParams {
-  1: required ImpalaInternalServiceVersion protocol_version
-
-  // required in V1
-  2: optional Types.TUniqueId dest_fragment_instance_id
-
-  // Id of this fragment in its role as a sender.
-  3: optional i32 sender_id
-
-  // required in V1
-  4: optional Types.TPlanNodeId dest_node_id
-
-  // optional in V1
-  5: optional Results.TRowBatch row_batch
-
-  // if set to true, indicates that no more row batches will be sent
-  // for this dest_node_id
-  6: optional bool eos
-}
-
-struct TTransmitDataResult {
   // required in V1
   1: optional Status.TStatus status
 }
@@ -757,17 +776,17 @@ struct TPoolConfig {
 }
 
 struct TBloomFilter {
-  // Log_2 of the heap space required for this filter. See BloomFilter::BloomFilter() for
-  // details.
-  1: required i32 log_heap_space
+  // Log_2 of the bufferpool space required for this filter.
+  // See BloomFilter::BloomFilter() for details.
+  1: required i32 log_bufferpool_space
 
   // List of buckets representing the Bloom Filter contents, laid out contiguously in one
   // string for efficiency of (de)serialisation. See BloomFilter::Bucket and
   // BloomFilter::directory_.
   2: binary directory
 
-  // If always_true or always_false is true, 'directory' and 'log_heap_space' are not
-  // meaningful.
+  // If always_true or always_false is true, 'directory' and 'log_bufferpool_space' are
+  // not meaningful.
   3: required bool always_true
   4: required bool always_false
 }
@@ -848,10 +867,6 @@ service ImpalaInternalService {
   // Cancellation is asynchronous.
   TCancelQueryFInstancesResult CancelQueryFInstances(
       1:TCancelQueryFInstancesParams params);
-
-  // Called by sender to transmit single row batch. Returns error indication
-  // if params.fragmentId or params.destNodeId are unknown or if data couldn't be read.
-  TTransmitDataResult TransmitData(1:TTransmitDataParams params);
 
   // Called by fragment instances that produce local runtime filters to deliver them to
   // the coordinator for aggregation and broadcast.

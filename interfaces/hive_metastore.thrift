@@ -132,6 +132,11 @@ struct Order {
   2: i32    order // asc(1) or desc(0)
 }
 
+// this object holds all the information about skewed table
+struct SkewedInfo {
+  1: list<string> skewedColNames, // skewed column names
+  2: list<list<string>> skewedColValues, //skewed values
+}
 
 // this object holds all the information about physical storage of the data belonging to a table
 struct StorageDescriptor {

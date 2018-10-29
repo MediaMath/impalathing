@@ -140,7 +140,11 @@ enum TErrorCode {
   DATASTREAM_RECVR_CLOSED = 111,
   BAD_PRINCIPAL_FORMAT = 112,
   LZ4_COMPRESSION_INPUT_TOO_LARGE = 113,
-  SASL_APP_NAME_MISMATCH = 114
+  SASL_APP_NAME_MISMATCH = 114,
+  PARQUET_BIT_PACKED_LEVELS = 115,
+  ROW_BATCH_TOO_LARGE = 116,
+  LIB_VERSION_MISMATCH = 117,
+  SCRATCH_READ_VERIFY_FAILED = 118
 }
 const list<string> TErrorMessage = [
   // OK
@@ -372,5 +376,13 @@ const list<string> TErrorMessage = [
   // LZ4_COMPRESSION_INPUT_TOO_LARGE
   "The input size is too large for LZ4 compression: $0",
   // SASL_APP_NAME_MISMATCH
-  "InitAuth() called multiple times with different names. Was called with $0. Now using $1."
+  "InitAuth() called multiple times with different names. Was called with $0. Now using $1.",
+  // PARQUET_BIT_PACKED_LEVELS
+  "Can not read Parquet file $0 with deprecated BIT_PACKED encoding for rep or def levels. Support was removed in Impala 3.0 - see IMPALA-6077.",
+  // ROW_BATCH_TOO_LARGE
+  "Row batch cannot be serialized: size of $0 bytes exceeds supported limit of $1",
+  // LIB_VERSION_MISMATCH
+  "The library $0 last modified time $1 does not match the expected last modified time $2. Run 'refresh functions <db name>'.",
+  // SCRATCH_READ_VERIFY_FAILED
+  "Error reading $0 bytes from scratch file '$1' on backend $2 at offset $3: verification of read data failed."
 ]

@@ -46,7 +46,8 @@ enum TPlanNodeType {
   SINGULAR_ROW_SRC_NODE,
   UNNEST_NODE,
   SUBPLAN_NODE,
-  KUDU_SCAN_NODE
+  KUDU_SCAN_NODE,
+  CARDINALITY_CHECK_NODE
 }
 
 // phases of an execution node
@@ -145,6 +146,10 @@ struct TRuntimeFilterDesc {
 
   // The type of runtime filter to build.
   10: required TRuntimeFilterType type
+
+  // The size of the filter based on the ndv estimate and the min/max limit specified in
+  // the query options. Should be greater than zero for bloom filters, zero otherwise.
+  11: optional i64 filter_size_bytes
 }
 
 // The information contained in subclasses of ScanNode captured in two separate
@@ -190,8 +195,29 @@ struct THBaseKeyRange {
   2: optional string stopKey
 }
 
+// Specifies how THdfsFileSplits can be generated from HDFS files.
+// Currently used for files that do not have block locations,
+// such as S3, ADLS, and Local. The Frontend creates these and the
+// coordinator's scheduler expands them into THdfsFileSplits.
+// The plan is to use TFileSplitGeneratorSpec as well for HDFS
+// files with block information. Doing so will permit the FlatBuffer
+// representation used to represent block information to pass from the
+// FrontEnd to the Coordinator without transforming to a heavier
+// weight Thrift representation. See IMPALA-6458.
+struct TFileSplitGeneratorSpec {
+  1: required CatalogObjects.THdfsFileDesc file_desc
+
+  // Maximum length of a file split to generate.
+  2: required i64 max_block_size
+
+  3: required bool is_splittable
+
+  // ID of partition within the THdfsTable associated with this scan node.
+  4: required i64 partition_id
+}
+
 // Specification of an individual data range which is held in its entirety
-// by a storage server
+// by a storage server.
 struct TScanRange {
   // one of these must be set for every TScanRange
   1: optional THdfsFileSplit hdfs_file_split
@@ -229,8 +255,7 @@ struct THdfsScanNode {
   // Tuple to evaluate 'min_max_conjuncts' against.
   8: optional Types.TTupleId min_max_tuple_id
 
-  // Map from SlotIds to the indices in TPlanNode.conjuncts that are eligible
-  // for dictionary filtering.
+  // The conjuncts that are eligible for dictionary filtering.
   9: optional map<Types.TSlotId, list<i32>> dictionary_filter_conjuncts
 
   // The byte offset of the slot for Parquet metadata if Parquet count star optimization
@@ -516,6 +541,18 @@ struct TBackendResourceProfile {
   4: optional i64 max_row_buffer_size
 }
 
+struct TCardinalityCheckNode {
+  // Associated statement of child
+  1: required string display_statement
+}
+
+// See PipelineMembership in the frontend for details.
+struct TPipelineMembership {
+  1: required Types.TPlanNodeId pipe_id
+  2: required i32 height
+  3: required TExecNodePhase phase
+}
+
 // This is essentially a union of all messages corresponding to subclasses
 // of PlanNode.
 struct TPlanNode {
@@ -534,6 +571,8 @@ struct TPlanNode {
   // Set to true if codegen should be disabled for this plan node. Otherwise the plan
   // node is codegen'd if the backend supports it.
   8: required bool disable_codegen
+
+  27: required list<TPipelineMembership> pipelines
 
   // one field per PlanNode subclass
   9: optional THdfsScanNode hdfs_scan_node
@@ -564,6 +603,8 @@ struct TPlanNode {
 
   // Resource profile for this plan node.
   25: required TBackendResourceProfile resource_profile
+
+  26: optional TCardinalityCheckNode cardinality_check_node
 }
 
 // A flattened representation of a tree of PlanNodes, obtained by depth-first

@@ -1,32 +1,26 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
+// Copyright 2012 Cloudera Inc.
 //
-//   http://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
+namespace py impala._thrift_gen.Types
 namespace cpp impala
-namespace java org.apache.impala.thrift
+namespace java com.cloudera.impala.thrift
 
 typedef i64 TTimestamp
-typedef i32 TFragmentIdx
 typedef i32 TPlanNodeId
 typedef i32 TTupleId
 typedef i32 TSlotId
 typedef i32 TTableId
-typedef i32 TJoinTableId
-
-// TODO: Consider moving unrelated enums to better locations.
 
 enum TPrimitiveType {
   INVALID_TYPE,
@@ -42,11 +36,12 @@ enum TPrimitiveType {
   DATETIME,
   TIMESTAMP,
   STRING,
-  BINARY, // Unsupported
+  // Unsupported types
+  BINARY,
   DECIMAL,
+  // CHAR(n). Currently only supported in UDAs
   CHAR,
-  VARCHAR,
-  FIXED_UDA_INTERMEDIATE,
+  VARCHAR
 }
 
 enum TTypeNodeType {
@@ -111,26 +106,6 @@ enum TExplainLevel {
   VERBOSE
 }
 
-enum TRuntimeFilterMode {
-  // No filters are computed in the FE or the BE.
-  OFF,
-
-  // Only broadcast filters are computed in the BE, and are only published to the local
-  // fragment.
-  LOCAL,
-
-  // All fiters are computed in the BE, and are published globally.
-  GLOBAL
-}
-
-enum TPrefetchMode {
-  // No prefetching at all.
-  NONE,
-
-  // Prefetch the hash table buckets.
-  HT_BUCKET
-}
-
 // A TNetworkAddress is the standard host, port representation of a
 // network address. The hostname field must be resolvable to an IPv4
 // address.
@@ -156,8 +131,8 @@ enum TFunctionBinaryType {
   // depending on the query option.
   BUILTIN,
 
-  // Java UDFs, loaded from *.jar
-  JAVA,
+  // Hive UDFs, loaded from *.jar
+  HIVE,
 
   // Native-interface, precompiled UDFs loaded from *.so
   NATIVE,
@@ -184,15 +159,15 @@ struct TScalarFunction {
 
 struct TAggregateFunction {
   1: required TColumnType intermediate_type
-  2: required bool is_analytic_only_fn
-  3: required string update_fn_symbol
-  4: required string init_fn_symbol
-  5: optional string serialize_fn_symbol
-  6: optional string merge_fn_symbol
-  7: optional string finalize_fn_symbol
+  2: required string update_fn_symbol
+  3: required string init_fn_symbol
+  4: optional string serialize_fn_symbol
+  5: optional string merge_fn_symbol
+  6: optional string finalize_fn_symbol
   8: optional string get_value_fn_symbol
   9: optional string remove_fn_symbol
-  10: optional bool ignores_distinct
+
+  7: optional bool ignores_distinct
 }
 
 // Represents a function in the Catalog.
@@ -224,7 +199,5 @@ struct TFunction {
   // One of these should be set.
   9: optional TScalarFunction scalar_fn
   10: optional TAggregateFunction aggregate_fn
-
-  // True for builtins or user-defined functions persisted by the catalog
-  11: optional bool is_persistent
 }
+

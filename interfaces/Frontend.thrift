@@ -87,6 +87,23 @@ struct TGetTablesResult {
   1: list<string> tables
 }
 
+// Arguments to getTableMetrics, which returns the metrics of a specific table.
+struct TGetTableMetricsParams {
+  1: required CatalogObjects.TTableName table_name
+}
+
+// Response to a getTableMetrics request. The response contains all the collected metrics
+// pretty-printed into a string.
+struct TGetTableMetricsResponse {
+  1: required string metrics
+}
+
+// Response from a call to getCatalogMetrics.
+struct TGetCatalogMetricsResult {
+  1: required i32 num_dbs
+  2: required i32 num_tables
+}
+
 // Arguments to getDbs, which returns a list of dbs that match an optional pattern
 struct TGetDbsParams {
   // If not set, match every database
@@ -155,6 +172,9 @@ struct TDescribeTableParams {
 
   // Set when describing a path to a nested collection.
   3: optional Types.TColumnType result_struct
+
+  // Session state for the user who initiated this request.
+  4: optional ImpalaInternalService.TSessionState session
 }
 
 // Results of a call to describeDb() and describeTable()
@@ -245,20 +265,23 @@ struct TShowRolesResult {
   1: required list<string> role_names
 }
 
-// Parameters for SHOW GRANT ROLE commands
-struct TShowGrantRoleParams {
+// Parameters for SHOW GRANT ROLE/USER commands
+struct TShowGrantPrincipalParams {
   // The effective user who submitted this request.
   1: optional string requesting_user
 
-  // The target role name.
-  2: required string role_name
+  // The target name.
+  2: required string name
+
+  // The principal type.
+  3: required CatalogObjects.TPrincipalType principal_type;
 
   // True if this operation requires admin privileges on the Sentry Service (when
   // the requesting user has not been granted the target role name).
-  3: required bool is_admin_op
+  4: required bool is_admin_op
 
   // An optional filter to show grants that match a specific privilege spec.
-  4: optional CatalogObjects.TPrivilege privilege
+  5: optional CatalogObjects.TPrivilege privilege
 }
 
 // Arguments to getFunctions(), which returns a list of non-qualified function
@@ -355,9 +378,9 @@ struct TPlanExecInfo {
   // it is unpartitioned.
   1: required list<Planner.TPlanFragment> fragments
 
-  // A map from scan node ids to a list of scan range locations.
+  // A map from scan node ids to a scan range specification.
   // The node ids refer to scan nodes in fragments[].plan
-  2: optional map<Types.TPlanNodeId, list<Planner.TScanRangeLocationList>>
+  2: optional map<Types.TPlanNodeId, Planner.TScanRangeSpec>
       per_node_scan_ranges
 }
 
@@ -394,8 +417,13 @@ struct TQueryExecRequest {
   9: optional i64 per_host_mem_estimate
 
   // Maximum possible (in the case all fragments are scheduled on all hosts with
-  // max DOP) minimum reservation required per host, in bytes.
-  10: optional i64 max_per_host_min_reservation;
+  // max DOP) minimum memory reservation required per host, in bytes.
+  10: optional i64 max_per_host_min_mem_reservation;
+
+  // Maximum possible (in the case all fragments are scheduled on all hosts with
+  // max DOP) required threads per host, i.e. the number of threads that this query
+  // needs to execute successfully. Does not include "optional" threads.
+  11: optional i64 max_per_host_thread_reservation;
 }
 
 enum TCatalogOpType {
@@ -411,7 +439,7 @@ enum TCatalogOpType {
   SHOW_CREATE_TABLE,
   SHOW_DATA_SRCS,
   SHOW_ROLES,
-  SHOW_GRANT_ROLE,
+  SHOW_GRANT_PRINCIPAL,
   SHOW_FILES,
   SHOW_CREATE_FUNCTION
 }
@@ -421,56 +449,59 @@ enum TCatalogOpType {
 struct TCatalogOpRequest {
   1: required TCatalogOpType op_type
 
+  // True if SYNC_DDL is used in the query options
+  2: required bool sync_ddl
+
   // Parameters for USE commands
-  2: optional TUseDbParams use_db_params
+  3: optional TUseDbParams use_db_params
 
   // Parameters for DESCRIBE DATABASE db commands
-  17: optional TDescribeDbParams describe_db_params
+  4: optional TDescribeDbParams describe_db_params
 
   // Parameters for DESCRIBE table commands
-  3: optional TDescribeTableParams describe_table_params
+  5: optional TDescribeTableParams describe_table_params
 
   // Parameters for SHOW DATABASES
-  4: optional TShowDbsParams show_dbs_params
+  6: optional TShowDbsParams show_dbs_params
 
   // Parameters for SHOW TABLES
-  5: optional TShowTablesParams show_tables_params
+  7: optional TShowTablesParams show_tables_params
 
   // Parameters for SHOW FUNCTIONS
-  6: optional TShowFunctionsParams show_fns_params
+  8: optional TShowFunctionsParams show_fns_params
 
   // Parameters for SHOW DATA SOURCES
-  11: optional TShowDataSrcsParams show_data_srcs_params
+  9: optional TShowDataSrcsParams show_data_srcs_params
 
   // Parameters for SHOW ROLES
-  12: optional TShowRolesParams show_roles_params
+  10: optional TShowRolesParams show_roles_params
 
-  // Parameters for SHOW GRANT ROLE
-  13: optional TShowGrantRoleParams show_grant_role_params
+  // Parameters for SHOW GRANT ROLE/USER
+  11: optional TShowGrantPrincipalParams show_grant_principal_params
 
   // Parameters for DDL requests executed using the CatalogServer
   // such as CREATE, ALTER, and DROP. See CatalogService.TDdlExecRequest
   // for details.
-  7: optional CatalogService.TDdlExecRequest ddl_params
+  12: optional CatalogService.TDdlExecRequest ddl_params
 
   // Parameters for RESET/INVALIDATE METADATA, executed using the CatalogServer.
   // See CatalogService.TResetMetadataRequest for more details.
-  8: optional CatalogService.TResetMetadataRequest reset_metadata_params
+  13: optional CatalogService.TResetMetadataRequest reset_metadata_params
 
   // Parameters for SHOW TABLE/COLUMN STATS
-  9: optional TShowStatsParams show_stats_params
+  14: optional TShowStatsParams show_stats_params
 
   // Parameters for SHOW CREATE TABLE
-  10: optional CatalogObjects.TTableName show_create_table_params
+  15: optional CatalogObjects.TTableName show_create_table_params
 
   // Parameters for SHOW FILES
-  14: optional TShowFilesParams show_files_params
+  16: optional TShowFilesParams show_files_params
 
   // Column lineage graph
-  15: optional LineageGraph.TLineageGraph lineage_graph
+  17: optional LineageGraph.TLineageGraph lineage_graph
 
   // Parameters for SHOW_CREATE_FUNCTION
-  16: optional TGetFunctionsParams show_create_function_params
+  18: optional TGetFunctionsParams show_create_function_params
 }
 
 // Parameters for the SET query option command
@@ -620,7 +651,13 @@ struct TSymbolLookupParams {
   6: optional Types.TColumnType ret_arg_type
 
   // Determines the signature of the mangled symbol
-  7: required TSymbolType symbol_type;
+  7: required TSymbolType symbol_type
+
+  // Does the lookup require the backend lib-cache entry be refreshed?
+  // If so, the file system is checked for a newer version of the file
+  // referenced by 'location'. If not, the entry in the lib-cache is used
+  // if present, otherwise the file is read from file-system.
+  8: required bool needs_refresh
 }
 
 enum TSymbolLookupResultCode {
@@ -638,37 +675,57 @@ struct TSymbolLookupResult {
 
   // The error message if the symbol found not be found.
   3: optional string error_msg
+
+  // Last modified time in backend lib-cache entry for the file referenced by 'location'.
+  4: optional i64 last_modified_time
 }
 
 // Sent from the impalad BE to FE with the results of each CatalogUpdate heartbeat.
-// Contains details on all catalog objects that need to be updated.
+// The catalog object updates are passed separately via NativeGetCatalogUpdate() callback.
 struct TUpdateCatalogCacheRequest {
   // True if update only contains entries changed from the previous update. Otherwise,
   // contains the entire topic.
   1: required bool is_delta
 
-  // The Catalog Service ID this update came from.
-  2: required Types.TUniqueId catalog_service_id
+  // The Catalog Service ID this update came from. A request should has either this field
+  // set or a Catalog typed catalog object in the update list.
+  2: optional Types.TUniqueId catalog_service_id
 
-  // New or modified items. Empty list if no items were updated.
-  3: required list<CatalogObjects.TCatalogObject> updated_objects
+  // New or modified items. Empty list if no items were updated. Deprecated after
+  // IMPALA-5990.
+  3: optional list<CatalogObjects.TCatalogObject> updated_objects_deprecated
 
-  // Empty if no items were removed or is_delta is false.
-  4: required list<CatalogObjects.TCatalogObject> removed_objects
+  // Empty if no items were removed or is_delta is false. Deprecated after IMPALA-5990.
+  4: optional list<CatalogObjects.TCatalogObject> removed_objects_deprecated
+
+  // The native ptr for calling back NativeGetCatalogUpdate().
+  5: required i64 native_iterator_ptr
 }
 
 // Response from a TUpdateCatalogCacheRequest.
 struct TUpdateCatalogCacheResponse {
   // The catalog service id this version is from.
   1: required Types.TUniqueId catalog_service_id
+
+  // The minimum catalog object version after CatalogUpdate() was processed.
+  2: required i64 min_catalog_object_version
+
+  // The updated catalog version needed by the backend.
+  3: required i64 new_catalog_version
 }
 
-// Sent from the impalad BE to FE with the latest cluster membership snapshot resulting
-// from the Membership heartbeat.
-struct TUpdateMembershipRequest {
+// Sent from the impalad BE to FE with the latest membership snapshot of the
+// executors on the cluster resulting from the Membership heartbeat.
+struct TUpdateExecutorMembershipRequest {
+  // The hostnames of the executor nodes.
   1: required set<string> hostnames
+
+  // The ip addresses of the executor nodes.
   2: required set<string> ip_addresses
-  3: i32 num_nodes
+
+  // The number of executors on a cluster, needed since there can be multiple
+  // impalads running on the same host.
+  3: i32 num_executors
 }
 
 // Contains all interesting statistics from a single 'memory pool' in the JVM.
@@ -704,7 +761,7 @@ struct TJvmMemoryPool {
 }
 
 // Request to get one or all sets of memory pool metrics.
-struct TGetJvmMetricsRequest {
+struct TGetJvmMemoryMetricsRequest {
   // If set, return all pools
   1: required bool get_all
 
@@ -712,8 +769,8 @@ struct TGetJvmMetricsRequest {
   2: optional string memory_pool
 }
 
-// Response from JniUtil::GetJvmMetrics()
-struct TGetJvmMetricsResponse {
+// Response from JniUtil::GetJvmMemoryMetrics()
+struct TGetJvmMemoryMetricsResponse {
   // One entry for every pool tracked by the Jvm, plus a synthetic aggregate pool called
   // 'total'
   1: required list<TJvmMemoryPool> memory_pools
@@ -764,6 +821,11 @@ struct TGetJvmThreadsInfoResponse {
   4: optional list<TJvmThreadInfo> threads
 }
 
+struct TGetJMXJsonResponse {
+  // JMX of the JVM serialized to a json string.
+  1: required string jmx_json
+}
+
 struct TGetHadoopConfigRequest {
   // The value of the <name> in the config <property>
   1: required string name
@@ -776,6 +838,16 @@ struct TGetHadoopConfigResponse {
 
 struct TGetAllHadoopConfigsResponse {
   1: optional map<string, string> configs;
+}
+
+struct TGetHadoopGroupsRequest {
+  // The user name to get the groups from.
+  1: required string user
+}
+
+struct TGetHadoopGroupsResponse {
+  // The list of groups that the user belongs to.
+  1: required list<string> groups
 }
 
 // For creating a test descriptor table. The tuples and their memory layout are computed

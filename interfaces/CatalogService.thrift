@@ -23,6 +23,7 @@ include "JniCatalog.thrift"
 include "Types.thrift"
 include "Status.thrift"
 include "Results.thrift"
+include "hive_metastore.thrift"
 
 // CatalogServer service API and related structs.
 
@@ -41,7 +42,9 @@ struct TCatalogServiceRequestHeader {
 
 // Returns details on the result of an operation that updates the catalog. Information
 // returned includes the Status of the operations, the catalog version that will contain
-// the update, and the catalog service ID.
+// the update, and the catalog service ID. If SYNC_DDL was set in the query options, it
+// also returns the version of the catalog update that this operation must wait for
+// before returning the response to the client.
 struct TCatalogUpdateResult {
   // The CatalogService service ID this result came from.
   1: required Types.TUniqueId catalog_service_id
@@ -52,11 +55,14 @@ struct TCatalogUpdateResult {
   // The status of the operation, OK if the operation was successful.
   3: required Status.TStatus status
 
+  // True if this is a result of an INVALIDATE METADATA operation.
+  4: required bool is_invalidate
+
   // The resulting TCatalogObjects that were added or modified, if applicable.
-  4: optional list<CatalogObjects.TCatalogObject> updated_catalog_objects
+  5: optional list<CatalogObjects.TCatalogObject> updated_catalog_objects
 
   // The resulting TCatalogObjects that were removed, if applicable.
-  5: optional list<CatalogObjects.TCatalogObject> removed_catalog_objects
+  6: optional list<CatalogObjects.TCatalogObject> removed_catalog_objects
 }
 
 // Request for executing a DDL operation (CREATE, ALTER, DROP).
@@ -64,63 +70,72 @@ struct TDdlExecRequest {
   1: required CatalogServiceVersion protocol_version = CatalogServiceVersion.V1
 
   // Common header included in all CatalogService requests.
-  17: optional TCatalogServiceRequestHeader header
+  2: optional TCatalogServiceRequestHeader header
 
-  2: required JniCatalog.TDdlType ddl_type
+  3: required JniCatalog.TDdlType ddl_type
 
   // Parameters for ALTER TABLE
-  3: optional JniCatalog.TAlterTableParams alter_table_params
+  4: optional JniCatalog.TAlterTableParams alter_table_params
 
   // Parameters for ALTER VIEW
-  4: optional JniCatalog.TCreateOrAlterViewParams alter_view_params
+  5: optional JniCatalog.TCreateOrAlterViewParams alter_view_params
 
   // Parameters for CREATE DATABASE
-  5: optional JniCatalog.TCreateDbParams create_db_params
+  6: optional JniCatalog.TCreateDbParams create_db_params
 
   // Parameters for CREATE TABLE
-  6: optional JniCatalog.TCreateTableParams create_table_params
+  7: optional JniCatalog.TCreateTableParams create_table_params
 
   // Parameters for CREATE TABLE LIKE
-  7: optional JniCatalog.TCreateTableLikeParams create_table_like_params
+  8: optional JniCatalog.TCreateTableLikeParams create_table_like_params
 
   // Parameters for CREATE VIEW
-  8: optional JniCatalog.TCreateOrAlterViewParams create_view_params
+  9: optional JniCatalog.TCreateOrAlterViewParams create_view_params
 
   // Parameters for CREATE FUNCTION
-  9: optional JniCatalog.TCreateFunctionParams create_fn_params
+  10: optional JniCatalog.TCreateFunctionParams create_fn_params
 
   // Parameters for DROP DATABASE
-  10: optional JniCatalog.TDropDbParams drop_db_params
+  11: optional JniCatalog.TDropDbParams drop_db_params
 
   // Parameters for DROP TABLE/VIEW
-  11: optional JniCatalog.TDropTableOrViewParams drop_table_or_view_params
+  12: optional JniCatalog.TDropTableOrViewParams drop_table_or_view_params
 
   // Parameters for TRUNCATE TABLE
-  21: optional JniCatalog.TTruncateParams truncate_params
+  13: optional JniCatalog.TTruncateParams truncate_params
 
   // Parameters for DROP FUNCTION
-  12: optional JniCatalog.TDropFunctionParams drop_fn_params
+  14: optional JniCatalog.TDropFunctionParams drop_fn_params
 
   // Parameters for COMPUTE STATS
-  13: optional JniCatalog.TComputeStatsParams compute_stats_params
+  15: optional JniCatalog.TComputeStatsParams compute_stats_params
 
   // Parameters for CREATE DATA SOURCE
-  14: optional JniCatalog.TCreateDataSourceParams create_data_source_params
+  16: optional JniCatalog.TCreateDataSourceParams create_data_source_params
 
   // Parameters for DROP DATA SOURCE
-  15: optional JniCatalog.TDropDataSourceParams drop_data_source_params
+  17: optional JniCatalog.TDropDataSourceParams drop_data_source_params
 
   // Parameters for DROP STATS
-  16: optional JniCatalog.TDropStatsParams drop_stats_params
+  18: optional JniCatalog.TDropStatsParams drop_stats_params
 
   // Parameters for CREATE/DROP ROLE
-  18: optional JniCatalog.TCreateDropRoleParams create_drop_role_params
+  19: optional JniCatalog.TCreateDropRoleParams create_drop_role_params
 
   // Parameters for GRANT/REVOKE ROLE
-  19: optional JniCatalog.TGrantRevokeRoleParams grant_revoke_role_params
+  20: optional JniCatalog.TGrantRevokeRoleParams grant_revoke_role_params
 
   // Parameters for GRANT/REVOKE privilege
-  20: optional JniCatalog.TGrantRevokePrivParams grant_revoke_priv_params
+  21: optional JniCatalog.TGrantRevokePrivParams grant_revoke_priv_params
+
+  // True if SYNC_DDL is set in query options
+  22: required bool sync_ddl
+
+  // Parameters for COMMENT ON
+  23: optional JniCatalog.TCommentOnParams comment_on_params
+
+  // Parameters for ALTER DATABASE
+  24: optional JniCatalog.TAlterDbParams alter_db_params
 }
 
 // Response from executing a TDdlExecRequest
@@ -147,18 +162,21 @@ struct TDdlExecResponse {
 struct TUpdateCatalogRequest {
   1: required CatalogServiceVersion protocol_version = CatalogServiceVersion.V1
 
+  // True if SYNC_DDL is set in query options.
+  2: required bool sync_ddl
+
   // Common header included in all CatalogService requests.
-  2: optional TCatalogServiceRequestHeader header
+  3: optional TCatalogServiceRequestHeader header
 
   // Unqualified name of the table to change
-  3: required string target_table;
+  4: required string target_table;
 
   // Database that the table belongs to
-  4: required string db_name;
+  5: required string db_name;
 
   // List of partitions that are new and need to be created. May
   // include the root partition (represented by the empty string).
-  5: required set<string> created_partitions;
+  6: required set<string> created_partitions;
 }
 
 // Response from a TUpdateCatalogRequest
@@ -171,14 +189,14 @@ struct TResetMetadataRequest {
   1: required CatalogServiceVersion protocol_version = CatalogServiceVersion.V1
 
   // Common header included in all CatalogService requests.
-  4: optional TCatalogServiceRequestHeader header
+  2: optional TCatalogServiceRequestHeader header
 
   // If true, refresh. Otherwise, invalidate metadata
-  2: required bool is_refresh
+  3: required bool is_refresh
 
   // Fully qualified name of the table to refresh or invalidate; not set if invalidating
   // the entire catalog
-  3: optional CatalogObjects.TTableName table_name
+  4: optional CatalogObjects.TTableName table_name
 
   // If set, refreshes the specified partition, otherwise
   // refreshes the whole table
@@ -186,6 +204,9 @@ struct TResetMetadataRequest {
 
   // If set, refreshes functions in the specified database.
   6: optional string db_name
+
+  // True if SYNC_DDL is set in query options
+  7: required bool sync_ddl
 }
 
 // Response from TResetMetadataRequest
@@ -213,6 +234,129 @@ struct TGetFunctionsResponse {
   // defined order.
   2: optional list<Types.TFunction> functions;
 }
+
+// Selector for partial information about Catalog-scoped objects
+// (i.e. those that are not within a particular database or table).
+struct TCatalogInfoSelector {
+  1: bool want_db_names
+  // TODO(todd): add objects like DataSources, etc.
+}
+
+// Returned info from a catalog request which selected items in
+// TCatalogInfoSelector.
+struct TPartialCatalogInfo {
+  1: list<string> db_names
+}
+
+// Selector for partial information about a Table.
+struct TTableInfoSelector {
+  // The response should include the HMS table struct.
+  1: bool want_hms_table
+
+  // If set, the response should include information about the given list of
+  // partitions. If this is unset, information about all partitions will be
+  // returned, so long as at least one of the following 'want_partition_*'
+  // flags is specified.
+  //
+  // If a partition ID is passed, but that partition does not exist in the
+  // table, then an exception will be thrown. It is assumed that the partition
+  // IDs passed here are a result of a prior successful call to fetch the partition
+  // list of this table.
+  //
+  // NOTE: "unset" and "set to empty" are different -- "set to empty" causes
+  // no partitions to be returned, whereas "unset" causes all partitions to be
+  // returned, so long as one of the following 'want_partition_*' is set.
+  2: optional list<i64> partition_ids
+
+  // ... each such partition should include its name.
+  3: bool want_partition_names
+
+  // ... each such partition should include metadata (location, etc).
+  4: bool want_partition_metadata
+
+  // ... each such partition should include its file info
+  5: bool want_partition_files
+
+  // List of columns to fetch stats for.
+  6: optional list<string> want_stats_for_column_names
+}
+
+// Returned information about a particular partition.
+struct TPartialPartitionInfo {
+  1: required i64 id
+
+  // Set if 'want_partition_names' was set in TTableInfoSelector.
+  2: optional string name
+
+  // Set if 'want_partition_metadata' was set in TTableInfoSelector.
+  3: optional hive_metastore.Partition hms_partition
+
+  // Set if 'want_partition_files' was set in TTableInfoSelector.
+  4: optional list<CatalogObjects.THdfsFileDesc> file_descriptors
+}
+
+// Returned information about a Table, as selected by TTableInfoSelector.
+struct TPartialTableInfo {
+  1: optional hive_metastore.Table hms_table
+
+  // The partition metadata for the requested partitions.
+  //
+  // If explicit partitions were passed, then it is guaranteed that this list
+  // is the same size and the same order as the requested list of IDs.
+  //
+  // See TPartialPartitionInfo for details on which fields will be set based
+  // on the caller-provided selector.
+  2: optional list<TPartialPartitionInfo> partitions
+
+  3: optional list<hive_metastore.ColumnStatisticsObj> column_stats
+
+  // Each TNetworkAddress is a datanode which contains blocks of a file in the table.
+  // Used so that each THdfsFileBlock can just reference an index in this list rather
+  // than duplicate the list of network address, which helps reduce memory usage.
+  // Only used when partition files are fetched.
+  7: optional list<Types.TNetworkAddress> network_addresses
+}
+
+// Selector for partial information about a Database.
+struct TDbInfoSelector {
+  // The response should include the HMS Database object.
+  1: bool want_hms_database
+  // The response should include the list of table names in the DB.
+  2: bool want_table_names
+  // TODO(todd): function names
+}
+
+// Returned information about a Database, as selected by TDbInfoSelector.
+struct TPartialDbInfo {
+  1: optional hive_metastore.Database hms_database
+  2: optional list<string> table_names
+}
+
+// RPC request for GetPartialCatalogObject.
+struct TGetPartialCatalogObjectRequest {
+  1: required CatalogServiceVersion protocol_version = CatalogServiceVersion.V1
+
+  // A catalog object descriptor: a TCatalogObject with the object name and type fields
+  // set.
+  2: required CatalogObjects.TCatalogObject object_desc
+
+  3: optional TTableInfoSelector table_info_selector
+  4: optional TDbInfoSelector db_info_selector
+  5: optional TCatalogInfoSelector catalog_info_selector
+}
+
+// RPC response for GetPartialCatalogObject.
+struct TGetPartialCatalogObjectResponse {
+  // The status of the operation, OK if the operation was successful.
+  // Unset indicates "OK".
+  1: optional Status.TStatus status
+
+  2: optional i64 object_version_number
+  3: optional TPartialTableInfo table_info
+  4: optional TPartialDbInfo db_info
+  5: optional TPartialCatalogInfo catalog_info
+}
+
 
 // Request the complete metadata for a given catalog object. May trigger a metadata load
 // if the object is not already in the catalog cache.
@@ -296,4 +440,8 @@ service CatalogService {
   // TODO: When Sentry Service has a better mechanism to perform these changes this API
   // should be deprecated.
   TSentryAdminCheckResponse SentryAdminCheck(1: TSentryAdminCheckRequest req);
+
+  // Fetch partial information about some object in the catalog.
+  TGetPartialCatalogObjectResponse GetPartialCatalogObject(
+      1: TGetPartialCatalogObjectRequest req);
 }

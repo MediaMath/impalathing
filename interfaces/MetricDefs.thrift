@@ -317,6 +317,36 @@ const map<string,TMetricDef> TMetricDefs =
     "label": "Catalog Server Topic Processing Time", 
     "units": Metrics.TUnit.TIME_S
   }, 
+  "catalog.curr-serviceid": {
+    "contexts": [
+      "IMPALAD"
+    ], 
+    "description": "Catalog service id.", 
+    "key": "catalog.curr-serviceid", 
+    "kind": Metrics.TMetricKind.PROPERTY, 
+    "label": "Catalog service id", 
+    "units": Metrics.TUnit.NONE
+  }, 
+  "catalog.curr-topic": {
+    "contexts": [
+      "IMPALAD"
+    ], 
+    "description": "Statestore topic update version.", 
+    "key": "catalog.curr-topic", 
+    "kind": Metrics.TMetricKind.GAUGE, 
+    "label": "Statestore topic update version", 
+    "units": Metrics.TUnit.NONE
+  }, 
+  "catalog.curr-version": {
+    "contexts": [
+      "IMPALAD"
+    ], 
+    "description": "Catalog topic update version.", 
+    "key": "catalog.curr-version", 
+    "kind": Metrics.TMetricKind.GAUGE, 
+    "label": "Catalog topic update version", 
+    "units": Metrics.TUnit.NONE
+  }, 
   "catalog.num-databases": {
     "contexts": [
       "IMPALAD"
@@ -585,6 +615,16 @@ const map<string,TMetricDef> TMetricDefs =
     "key": "impala-server.io.mgr.cached-file-handles-miss-count", 
     "kind": Metrics.TMetricKind.GAUGE, 
     "label": "HDFS cached file handles miss count", 
+    "units": Metrics.TUnit.NONE
+  }, 
+  "impala-server.io.mgr.cached-file-handles-reopened": {
+    "contexts": [
+      "IMPALAD"
+    ], 
+    "description": "Number of cached HDFS file handles reopened", 
+    "key": "impala-server.io.mgr.cached-file-handles-reopened", 
+    "kind": Metrics.TMetricKind.COUNTER, 
+    "label": "HDFS cached file handles reopened", 
     "units": Metrics.TUnit.NONE
   }, 
   "impala-server.io.mgr.num-cached-file-handles": {
@@ -1037,6 +1077,26 @@ const map<string,TMetricDef> TMetricDefs =
     "label": "Kudu Client Version", 
     "units": Metrics.TUnit.NONE
   }, 
+  "mem-tracker.$0.current_usage_bytes": {
+    "contexts": [
+      "IMPALAD"
+    ], 
+    "description": "Memtracker $0 Current Usage Bytes", 
+    "key": "mem-tracker.$0.current_usage_bytes", 
+    "kind": Metrics.TMetricKind.GAUGE, 
+    "label": "Memtracker $0 Current Usage Bytes", 
+    "units": Metrics.TUnit.BYTES
+  }, 
+  "mem-tracker.$0.peak_usage_bytes": {
+    "contexts": [
+      "IMPALAD"
+    ], 
+    "description": "Memtracker $0 Peak Usage Bytes", 
+    "key": "mem-tracker.$0.peak_usage_bytes", 
+    "kind": Metrics.TMetricKind.GAUGE, 
+    "label": "Memtracker $0 Peak Max Bytes", 
+    "units": Metrics.TUnit.BYTES
+  }, 
   "mem-tracker.process.bytes-freed-by-last-gc": {
     "contexts": [
       "IMPALAD"
@@ -1207,6 +1267,16 @@ const map<string,TMetricDef> TMetricDefs =
     "label": "$0 RPC Call Duration", 
     "units": Metrics.TUnit.TIME_MS
   }, 
+  "rpc.$0.rpcs_queue_overflow": {
+    "contexts": [
+      "IMPALAD"
+    ], 
+    "description": "Service $0: Total number of incoming RPCs that were rejected due to overflow of the service queue.", 
+    "key": "rpc.$0.rpcs_queue_overflow", 
+    "kind": Metrics.TMetricKind.COUNTER, 
+    "label": "Service $0 Incoming RPC Queue Overflows", 
+    "units": Metrics.TUnit.UNIT
+  }, 
   "sanitizer-total-bytes-allocated": {
     "contexts": [
       "STATESTORE", 
@@ -1300,7 +1370,7 @@ const map<string,TMetricDef> TMetricDefs =
     "key": "statestore-subscriber.last-recovery-duration", 
     "kind": Metrics.TMetricKind.GAUGE, 
     "label": "StateStore Subscriber Last Recovery Duration", 
-    "units": Metrics.TUnit.NONE
+    "units": Metrics.TUnit.TIME_S
   }, 
   "statestore-subscriber.last-recovery-time": {
     "contexts": [
@@ -1357,12 +1427,23 @@ const map<string,TMetricDef> TMetricDefs =
     "label": "Statestore Subscriber Topic $0 Processing Time", 
     "units": Metrics.TUnit.TIME_S
   }, 
+  "statestore-subscriber.topic-$0.update-interval": {
+    "contexts": [
+      "CATALOGSERVER", 
+      "IMPALAD"
+    ], 
+    "description": "Interval between topic updates for Topic $0", 
+    "key": "statestore-subscriber.topic-$0.update-interval", 
+    "kind": Metrics.TMetricKind.STATS, 
+    "label": "Statestore Subscriber Topic $0 Update Interval", 
+    "units": Metrics.TUnit.TIME_S
+  }, 
   "statestore-subscriber.topic-update-duration": {
     "contexts": [
       "CATALOGSERVER", 
       "IMPALAD"
     ], 
-    "description": "The time (sec) taken to process Statestore subcriber topic updates.", 
+    "description": "The time (sec) taken to process Statestore subscriber topic updates.", 
     "key": "statestore-subscriber.topic-update-duration", 
     "kind": Metrics.TMetricKind.STATS, 
     "label": "Statestore Subscriber Topic Update Duration", 
@@ -1409,11 +1490,21 @@ const map<string,TMetricDef> TMetricDefs =
     "label": "Statestore Live Backends List", 
     "units": Metrics.TUnit.NONE
   }, 
+  "statestore.priority-topic-update-durations": {
+    "contexts": [
+      "STATESTORE"
+    ], 
+    "description": "The time (sec) spent sending priority topic update RPCs. Includes subscriber-side processing time and network transmission time.", 
+    "key": "statestore.priority-topic-update-durations", 
+    "kind": Metrics.TMetricKind.STATS, 
+    "label": "Statestore Priority Topic Update Durations", 
+    "units": Metrics.TUnit.TIME_S
+  }, 
   "statestore.topic-update-durations": {
     "contexts": [
       "STATESTORE"
     ], 
-    "description": "The time (sec) spent sending topic update RPCs. Includes subscriber-side processing time and network transmission time.", 
+    "description": "The time (sec) spent sending non-priority topic update RPCs. Includes subscriber-side processing time and network transmission time.", 
     "key": "statestore.topic-update-durations", 
     "kind": Metrics.TMetricKind.STATS, 
     "label": "Statestore Topic Update Durations", 
@@ -1621,6 +1712,16 @@ const map<string,TMetricDef> TMetricDefs =
     "key": "total-senders-timedout-waiting-for-recvr-creation", 
     "kind": Metrics.TMetricKind.COUNTER, 
     "label": "Total senders timed-out waiting for receiving fragment to initialize", 
+    "units": Metrics.TUnit.NONE
+  }, 
+  "tzdata-path": {
+    "contexts": [
+      "IMPALAD"
+    ], 
+    "description": "Path to the time-zone database", 
+    "key": "tzdata-path", 
+    "kind": Metrics.TMetricKind.PROPERTY, 
+    "label": "Path to the time-zone database", 
     "units": Metrics.TUnit.NONE
   }
 }
