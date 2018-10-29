@@ -49,3 +49,12 @@ func main() {
 }
 
 ```
+
+NOTES: changes for MediaMath:
+
+    * there are a few updates and improvements in connection and rowset:
+         - fix connection leaks
+         - fix rowset metadata
+    * interfaces are from whatver impala build we are using (currently 3.0.1)
+    * interfaces are edited to build thrift interfaces for Go. In particular  we need to work around list (in go []slice) map keys, which are
+    not valid Go. For now I have manually removed an optional member struct: SkewedInfo
