@@ -76,6 +76,14 @@ func (c *Connection) CloseQuery(ctx context.Context, handle *beeswax.QueryHandle
 	return c.client.Close(ctx, handle)
 }
 
+func (c *Connection) CloseInsert(ctx context.Context, handle *beeswax.QueryHandle) (map[string]int64, error) {
+	result, err := c.client.CloseInsert(ctx, handle)
+	if err != nil {
+		return nil, err
+	}
+	return result.RowsAppended, nil
+}
+
 func (c *Connection) ExecuteAndWait(ctx context.Context, query string) (RowSet, error) {
 	bquery := beeswax.Query{}
 
