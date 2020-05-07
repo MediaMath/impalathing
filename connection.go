@@ -3,10 +3,12 @@ package impalathing
 import (
 	"context"
 	"fmt"
+	"log"
+	"time"
+
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/MediaMath/impalathing/services/beeswax"
 	impala "github.com/MediaMath/impalathing/services/impalaservice"
-	"log"
 )
 
 type Options struct {
@@ -24,10 +26,12 @@ type Connection struct {
 	handle    *beeswax.QueryHandle
 	transport thrift.TTransport
 	options   Options
+	Host      string
+	Port      int
 }
 
 func Connect(ctx context.Context, host string, port int, options Options) (*Connection, error) {
-	socket, err := thrift.NewTSocket(fmt.Sprintf("%s:%d", host, port))
+	socket, err := thrift.NewTSocketTimeout(fmt.Sprintf("%s:%d", host, port), time.Second*30)
 
 	if err != nil {
 		return nil, err
@@ -47,7 +51,7 @@ func Connect(ctx context.Context, host string, port int, options Options) (*Conn
 
 	client := impala.NewImpalaServiceClientFactory(transport, protocolFactory)
 
-	return &Connection{ctx, client, nil, transport, options}, nil
+	return &Connection{ctx, client, nil, transport, options, host, port}, nil
 }
 
 func (c *Connection) isOpen() bool {
@@ -96,7 +100,7 @@ func (c *Connection) ExecuteAndWait(ctx context.Context, query string) (RowSet, 
 		return nil, err
 	}
 
-	return newRowSet(ctx, c.client, handle, c.options), nil
+	return newRowSet(ctx, c.client, handle, c.options, c.Host, c.Port), nil
 }
 func (c *Connection) Query(ctx context.Context, query string) (RowSet, error) {
 	bquery := beeswax.Query{}
@@ -110,5 +114,5 @@ func (c *Connection) Query(ctx context.Context, query string) (RowSet, error) {
 		return nil, err
 	}
 
-	return newRowSet(ctx, c.client, handle, c.options), nil
+	return newRowSet(ctx, c.client, handle, c.options, c.Host, c.Port), nil
 }

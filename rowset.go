@@ -27,6 +27,8 @@ type rowSet struct {
 	metadata *beeswax.ResultsMetadata
 
 	nextRow []string
+	host    string
+	port    int
 }
 
 // A RowSet represents an asyncronous hive operation. You can
@@ -43,6 +45,7 @@ type RowSet interface {
 	FetchAll() []map[string]interface{}
 	MapScan(dest map[string]interface{}) error
 	Handle() *beeswax.QueryHandle
+	Cancel() error
 }
 
 // Represents job status, including success state and time the
@@ -52,20 +55,18 @@ type Status struct {
 	Error error
 }
 
-func newRowSet(ctx context.Context, client *impala.ImpalaServiceClient, handle *beeswax.QueryHandle, options Options) RowSet {
-	return &rowSet{ctx: ctx, client: client, handle: handle, options: options, offset: 0, rowSet: nil,
-		hasMore: true, ready: false, metadata: nil, nextRow: nil}
-}
-
-//
-//
-//
 func (s *Status) IsSuccess() bool {
 	return s.state != beeswax.QueryState_EXCEPTION
 }
 
 func (s *Status) IsComplete() bool {
 	return s.state == beeswax.QueryState_FINISHED
+}
+
+func newRowSet(ctx context.Context, client *impala.ImpalaServiceClient, handle *beeswax.QueryHandle, options Options,
+	host string, port int) RowSet {
+	return &rowSet{ctx: ctx, client: client, handle: handle, options: options, offset: 0, rowSet: nil,
+		hasMore: true, ready: false, metadata: nil, nextRow: nil, host: host, port: port}
 }
 
 func (r *rowSet) Handle() *beeswax.QueryHandle {
@@ -294,5 +295,28 @@ func (r *rowSet) MapScan(row map[string]interface{}) error {
 		}
 		row[r.metadata.Schema.FieldSchemas[i].Name] = conv
 	}
+	return nil
+}
+
+func (r *rowSet) Cancel() error {
+	var ctx, cancel = context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
+
+	con, err := Connect(ctx, r.host, r.port, DefaultOptions)
+	if err != nil {
+		return err
+	}
+	defer con.Close()
+
+	_, err = con.client.Cancel(context.Background(), r.handle)
+	if err != nil {
+		return err
+	}
+
+	err = con.client.Close(context.Background(), r.handle)
+	if err != nil {
+		return err
+	}
+	//log.Println(status)
 	return nil
 }
