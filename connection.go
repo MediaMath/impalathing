@@ -28,10 +28,11 @@ type Connection struct {
 	options   Options
 	Host      string
 	Port      int
+	Timeout   time.Duration
 }
 
-func Connect(ctx context.Context, host string, port int, options Options) (*Connection, error) {
-	socket, err := thrift.NewTSocketTimeout(fmt.Sprintf("%s:%d", host, port), time.Second*30)
+func Connect(ctx context.Context, host string, port int, options Options, timeout time.Duration) (*Connection, error) {
+	socket, err := thrift.NewTSocketTimeout(fmt.Sprintf("%s:%d", host, port), timeout)
 
 	if err != nil {
 		return nil, err
@@ -51,7 +52,7 @@ func Connect(ctx context.Context, host string, port int, options Options) (*Conn
 
 	client := impala.NewImpalaServiceClientFactory(transport, protocolFactory)
 
-	return &Connection{ctx, client, nil, transport, options, host, port}, nil
+	return &Connection{ctx, client, nil, transport, options, host, port, timeout}, nil
 }
 
 func (c *Connection) isOpen() bool {
@@ -100,7 +101,7 @@ func (c *Connection) ExecuteAndWait(ctx context.Context, query string) (RowSet, 
 		return nil, err
 	}
 
-	return newRowSet(ctx, c.client, handle, c.options, c.Host, c.Port), nil
+	return newRowSet(ctx, c.client, handle, c.options, c.Host, c.Port, c.Timeout), nil
 }
 func (c *Connection) Query(ctx context.Context, query string) (RowSet, error) {
 	bquery := beeswax.Query{}
@@ -114,5 +115,5 @@ func (c *Connection) Query(ctx context.Context, query string) (RowSet, error) {
 		return nil, err
 	}
 
-	return newRowSet(ctx, c.client, handle, c.options, c.Host, c.Port), nil
+	return newRowSet(ctx, c.client, handle, c.options, c.Host, c.Port, c.Timeout), nil
 }

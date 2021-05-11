@@ -29,6 +29,7 @@ type rowSet struct {
 	nextRow []string
 	host    string
 	port    int
+	timeout time.Duration
 }
 
 // A RowSet represents an asyncronous hive operation. You can
@@ -64,9 +65,9 @@ func (s *Status) IsComplete() bool {
 }
 
 func newRowSet(ctx context.Context, client *impala.ImpalaServiceClient, handle *beeswax.QueryHandle, options Options,
-	host string, port int) RowSet {
+	host string, port int, timeout time.Duration) RowSet {
 	return &rowSet{ctx: ctx, client: client, handle: handle, options: options, offset: 0, rowSet: nil,
-		hasMore: true, ready: false, metadata: nil, nextRow: nil, host: host, port: port}
+		hasMore: true, ready: false, metadata: nil, nextRow: nil, host: host, port: port, timeout: timeout}
 }
 
 func (r *rowSet) Handle() *beeswax.QueryHandle {
@@ -302,7 +303,7 @@ func (r *rowSet) Cancel() error {
 	var ctx, cancel = context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
-	con, err := Connect(ctx, r.host, r.port, DefaultOptions)
+	con, err := Connect(ctx, r.host, r.port, DefaultOptions, r.timeout)
 	if err != nil {
 		return err
 	}
